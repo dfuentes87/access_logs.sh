@@ -1,12 +1,13 @@
 #!/bin/bash
 
-# This will run the cleanup function if ctrl-c is typed
-trap cleanup INT
+#####################################################################
+
+# A quick way to check the top 5 IPs hitting a domain's access logs.
+
+#####################################################################
 
 # temporary file to dump data
 tmp_File="/tmp/access_logs.tmp"
-# time limit for rerun question to be answered
-time_limit="20"
 # number of domains
 default_num="3"
 num=$1
@@ -14,13 +15,7 @@ if [[ -z "$num" ]]; then
   num="$default_num"
 fi
 
-# Removes temp file and deletes script
-cleanup (){
-  rm -f $tmp_File
-  rm -f ./access_logs.sh && echo -e "\nScript deleted"
-  exit 0
-}
-
+# Plesk and cPanel functions for getting the access logs
 plesk_logCheck () {
   dom_sys_dirs=$(find /var/www/vhosts/system/* -maxdepth 0 -type d -print0 | xargs -0)
   for dom_Dir in $dom_sys_dirs; do
@@ -50,10 +45,15 @@ cpanel_logCheck () {
   done
 }
 
-if [ -d "/usr/local/psa" ]; then
+# Check if on a Plesk or cPanel server, and run the appropriate function.
+# Otherwise, exit and explain
+if [[ -d "/usr/local/psa" ]]; then
   plesk_logCheck
-else [ -d "/usr/local/cpanel" ];
+elif [[ -d "/usr/local/cpanel" ]];
   cpanel_logCheck
+else
+  echo "This script only works on a Plesk or cPanel server. Script exiting..."
+  exit 0
 fi
 
 # total number of logs with data
@@ -68,18 +68,18 @@ fi
 rm -f $tmp_File
 
 clear
-printf "\n===================================
-Total domains with connections: $access_count
-Showing connections for top: $num
-==================================="
+  echo "===================================="
+  echo " Total domains with connections: $access_count"
+  echo " Showing connections for top: $num"
+  echo "===================================="
 # this loop prints access log results
 for log_Path in $top_paths; do
   domain=$(echo "$log_Path" | awk -F'/' '{print $6}')
   total_hits=$(wc -l "$log_Path" | awk '{print $1}')
   since_time=$(head -1 "$log_Path" | sed -e 's/.*\[\(.*\)\].*/\1/')
-  echo -e "\n$domain - total hits: $total_hits - since: $since_time"
-  echo "$log_Path"
-  echo "Top 5 IPs:"
+  echo -e "\n $domain - total hits: $total_hits - since: $since_time"
+  echo " $log_Path"
+  echo -e " Top 5 IPs:"
   # prints top 5 IPs in the access log
   awk '{print $1}' "$log_Path" | sort | uniq -c | sort -nr | head -5
   echo ""
@@ -87,16 +87,16 @@ done
 # if more than 3 domains have data in access logs, ask to rerun
 if [[ "$access_count" -gt "$default_num" ]] && [[ "$access_count" != "$num" ]]; then
   echo
-  read -t $time_limit -n 1 -p 'Rerun the script on more domains?: ' rerun
-  if [[ "$rerun" ]]; then
-    echo
+  read -n 1 -p 'Rerun the script on more domains?: ' rerun
+  echo
     case "$rerun" in
       Y|y)
         # allows you to enter num of domains to rerun script on
-        read -t $time_limit -p "How many domains? (max:$access_count): " dom_choice
+        read -p "How many domains? (max:$access_count): " dom_choice
         # tests that an integer was passed in last question
         if ! [[ "$dom_choice" =~ ^[0-9]+$ ]] ; then
-          echo -e "\nInvalid entry or script timed out. Removing script."
+          echo -e "\nInvalid entry. Script exiting..."
+          exit 0
         # reruns script on specified num of domains if valid number is passed
         elif [[ "$dom_choice" -gt 0 ]] && [[ "$dom_choice" -lt "$access_count" ]]; then
           bash "$0" "$dom_choice"
@@ -106,16 +106,14 @@ if [[ "$access_count" -gt "$default_num" ]] && [[ "$access_count" != "$num" ]]; 
           bash "$0" "$access_count"
           exit 0
         else
-          echo -e "\nYou typed 0. Removing script."
+          echo -e "\nYou typed 0. Script exiting..."
+          exit 0
         fi
         ;;
+      # If you type anything other than y/Y then the script exits
       *)
-        echo -e "\nRemoving script."
+        echo -e "\nInvalid answer or you typed No. Script exiting..."
+        echo
+        exit 0
     esac
-  else
-    echo -e "\nInvalid entry or script timed out. Removing script."
-  fi
 fi
-
-# calls cleanup function
-cleanup
