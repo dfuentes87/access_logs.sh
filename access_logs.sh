@@ -2,7 +2,7 @@
 
 #####################################################################
 
-# A quick way to check the top 5 IPs hitting a domain's access logs.
+# A quick way to check the top 5 IPs hitting a domain's access logs
 
 #####################################################################
 
@@ -23,9 +23,6 @@ plesk_logCheck () {
     # If access log has data, output of $total_hits is written to a temp file
     if [[ -s "$dom_Dir"/logs/access_log ]]; then
       echo "$total_hits" >> $tmp_File
-    else
-      echo "No domains found!"
-      exit 0
     fi
   done
 }
@@ -38,21 +35,35 @@ cpanel_logCheck () {
     if [[ -s "$log_Path" ]]; then
       total_hits=$(wc -l "$log_Path")
       echo "$total_hits" >> $tmp_File
-    else
-      echo "No domains found!"
-      exit 0
     fi
   done
 }
 
-# Check if on a Plesk or cPanel server, and run the appropriate function.
-# Otherwise, exit and explain
+other_logCheck () {
+  updatedb
+  other_logs=$(locate -iw */logs/access_log)
+  for log_entry in $other_logs; do
+    total_hits=$(wc -l $log_entry)
+    if [[ -s $log_entry ]]; then
+      echo "$total_hits" >> $tmp_File
+    fi
+  done
+}
+
+# Determine which type of server and run the appropriate function
 if [[ -d "/usr/local/psa" ]]; then
   plesk_logCheck
 elif [[ -d "/usr/local/cpanel" ]];
   cpanel_logCheck
 else
-  echo "This script only works on a Plesk or cPanel server. Script exiting..."
+  other_logCheck
+fi
+
+# If all access logs are missing or empty, exit out
+if [[ ! -s /tmp/access_logs.tmp ]]; then
+  echo "All logs are empty or something went wrong."
+  echo "Hit enter to return to the main menu."
+  read enterKey
   exit 0
 fi
 
