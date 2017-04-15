@@ -6,6 +6,15 @@
 
 #####################################################################
 
+BoldOn="\033[1m"   #
+BoldOff="\033[22m"
+
+cleanup() {
+  rm -f $tmp_File
+}
+
+trap cleanup EXIT SIGKILL SIGSTOP SIGTERM SIGHUP SIGQUIT
+
 # temporary file to dump data
 tmp_File="/tmp/access_logs.tmp"
 # number of domains
@@ -15,20 +24,21 @@ if [[ -z "$num" ]]; then
   num="$default_num"
 fi
 
-# Plesk and cPanel functions for getting the access logs
-plesk_logCheck () {
-  dom_sys_dirs=$(find /var/www/vhosts/system/* -maxdepth 0 -type d -print0 | xargs -0)
-  for dom_Dir in $dom_sys_dirs; do
-    total_hits=$(wc -l "$dom_Dir"/logs/access_log)
+# Plesk function for getting the access logs
+plesk_logCheck() {
+  find /var/www/vhosts/system/* -maxdepth 0 -type d -print0 |
+  while IFS= read -r -d $'\0' result; do
+    total_hits=$(wc -l "$result"/logs/access_log 2>/dev/null)
     # If access log has data, output of $total_hits is written to a temp file
-    if [[ -s "$dom_Dir"/logs/access_log ]]; then
+    if [[ -s "$result"/logs/access_log ]]; then
       echo "$total_hits" >> $tmp_File
     fi
   done
 }
 
-cpanel_logCheck () {
-  domain_list=$(grep -Ev "*.accessdomain.com" /etc/localdomains | xargs)
+# cPanel function for getting the access logs
+cpanel_logCheck() {
+  domain_list=$(grep -Ev "*.accessdomain.com" /etc/localdomains)
   for dom in $domain_list; do
     log_Path="/usr/local/apache/domlogs/$dom"
     # If access log has data, output of $total_hits is written to a temp file
@@ -39,7 +49,10 @@ cpanel_logCheck () {
   done
 }
 
-other_logCheck () {
+# Unknown server type function for getting the access logs
+other_logCheck() {
+  echo "This server is neither Plesk or cPanel, so this may not work."
+  echo
   updatedb
   other_logs=$(locate -iw */logs/access_log)
   for log_entry in $other_logs; do
@@ -53,7 +66,7 @@ other_logCheck () {
 # Determine which type of server and run the appropriate function
 if [[ -d "/usr/local/psa" ]]; then
   plesk_logCheck
-elif [[ -d "/usr/local/cpanel" ]];
+elif [[ -d "/usr/local/cpanel" ]]; then
   cpanel_logCheck
 else
   other_logCheck
@@ -61,8 +74,7 @@ fi
 
 # If all access logs are missing or empty, exit out
 if [[ ! -s /tmp/access_logs.tmp ]]; then
-  echo "All logs are empty or something went wrong."
-  echo "Hit enter to return to the main menu."
+  echo "All logs are empty or something went wrong. Press Enter to exit the script."
   read enterKey
   exit 0
 fi
@@ -76,7 +88,7 @@ if [[ $access_count -lt "$default_num" ]]; then
 fi
 
 # removes temp file after setting more variables
-rm -f $tmp_File
+cleanup
 
 clear
   echo "===================================="
@@ -88,11 +100,12 @@ for log_Path in $top_paths; do
   domain=$(echo "$log_Path" | awk -F'/' '{print $6}')
   total_hits=$(wc -l "$log_Path" | awk '{print $1}')
   since_time=$(head -1 "$log_Path" | sed -e 's/.*\[\(.*\)\].*/\1/')
-  echo -e "\n $domain - total hits: $total_hits - since: $since_time"
-  echo " $log_Path"
-  echo -e " Top 5 IPs:"
+  echo -e "\n $domain - $log_Path"
+  echo -e " ${BoldOn}total hits:${BoldOff} $total_hits - ${BoldOn}since:${BoldOff} $since_time"
+  echo
+  echo -e " ${BoldOn}Top 5 IPs:${BoldOff}"
   # prints top 5 IPs in the access log
-  awk '{print $1}' "$log_Path" | sort | uniq -c | sort -nr | head -5
+  awk '{print $1}' "$log_Path" | sort | uniq -c | sort -nr | head -5 | sed 's/^[ ]*/ /g'
   echo ""
 done
 # if more than 3 domains have data in access logs, ask to rerun
@@ -117,13 +130,19 @@ if [[ "$access_count" -gt "$default_num" ]] && [[ "$access_count" != "$num" ]]; 
           bash "$0" "$access_count"
           exit 0
         else
-          echo -e "\nYou typed 0. Script exiting..."
+          echo -e "\nYou selected 0. Script exiting..."
           exit 0
         fi
-        ;;
-      # If you type anything other than y/Y then the script exits
+      ;;
+      # If you type in n/N
+      N|n)
+        echo -e "\nYou typed in 'No'. Script exiting..."
+        echo
+        exit 0
+      ;;
+      # If you type anything other than y/Y or n/N then the script exits
       *)
-        echo -e "\nInvalid answer or you typed No. Script exiting..."
+        echo -e "\nInvalid selection. Script exiting..."
         echo
         exit 0
     esac
